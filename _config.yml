@@ -1,0 +1,42 @@
+title: threecee apps
+description: User documentation for HealthInsights and MyLoop With Watch
+url: https://threecee.github.io
+baseurl: ""
+
+# Use Jekyll's minima theme (GH Pages-supported). The default `_layouts/default.html`
+# we ship in this repo overrides minima's default layout.
+theme: minima
+
+# Top-level navigation rendered by _layouts/default.html.
+# Each entry has `title` + `url`. The active page is highlighted via Liquid
+# in the layout.
+nav:
+  - title: Home
+    url: /
+  - title: Install
+    url: /install
+  - title: HealthInsights
+    url: /healthinsights
+  - title: MyLoop
+    url: /myloop
+  - title: Watch dynamics
+    url: /myloop-watch-dynamics
+  - title: Troubleshooting
+    url: /troubleshooting
+
+# Privacy policy URLs (external repos), rendered in the footer.
+privacy:
+  - title: HealthInsights privacy
+    url: https://threecee.github.io/healthinsights-privacy/
+  - title: MyLoop privacy
+    url: https://threecee.github.io/loop-privacy/
+
+# Jekyll plugins on GH Pages allow-list — none needed for this site.
+plugins: []
+
+# Default front-matter for all pages — every .md file inherits layout: default.
+defaults:
+  - scope:
+      path: ""
+    values:
+      layout: default

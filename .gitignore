@@ -1,0 +1,13 @@
+# Jekyll local-build artifacts (we don't build locally; GH Pages builds)
+_site/
+.sass-cache/
+.jekyll-cache/
+.jekyll-metadata
+
+# macOS
+.DS_Store
+
+# editor
+.vscode/
+.idea/
+*.swp
