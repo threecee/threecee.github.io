@@ -38,10 +38,10 @@ state — is genuinely novel and worth understanding.
 
 ## Closed-loop vocabulary you should know
 
-If you're new to Loop, the [LoopKit community
-documentation](https://loopkit.github.io) is the authoritative reference
+If you're new to Loop, the Loop community maintains authoritative docs
 for closed-loop insulin delivery concepts (basal, bolus, IOB, COB, ISF,
-etc.). MyLoop is feature-compatible with vanilla Loop on those.
+etc.) — search "LoopDocs" or "Loop and Learn" for the current site.
+MyLoop is feature-compatible with vanilla Loop on those concepts.
 
 ## Liability and informed consent
 
