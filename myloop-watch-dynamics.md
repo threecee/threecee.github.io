@@ -83,11 +83,20 @@ While you're separated:
 
 ## Reverting to phone-driving
 
-When you return and the phone reconnects to the pod, the reverse
-handoff happens automatically: the phone takes the BLE bond back, and
-the watch reverts to passenger. Same warming-up window applies in
-reverse — the phone's first iteration after taking back the role uses
-its existing history, so warming up is usually not visible.
+When you return and the phone is reachable from the watch over Apple's
+WCSession transport for **at least 60 seconds**, the reverse handoff
+fires automatically: the phone takes the BLE bond back, and the watch
+reverts to passenger. The 60-second debounce avoids flapping during
+brief reconnect storms.
+
+Same warming-up window applies in reverse — the phone's first
+iteration after taking back the role uses its existing history, so
+warming up is usually not visible.
+
+The auto-revert behavior is governed by the handoff mode setting
+(default: `automatic`). If you set the mode to `manual`, the watch
+keeps the driver role until you initiate a handoff back to the phone
+explicitly via the watch's settings.
 
 ## What to do if handoff doesn't happen
 
@@ -112,7 +121,10 @@ mode after the phone has clearly gone out of range:
   is pending Apple approval; for now use Focus exemptions or rely on
   the watch's haptic alerts.
 
-_Last updated: 2026-05-01_
+_Last updated: 2026-05-02_
 
-_Watch behavior verified on hardware: pending (D.1b Phase 4.5–4.6).
-Update this footer when verified._
+_Watch behavior verified on hardware: pending. Auto-revert from watch
+back to phone (Reverting to phone-driving section above) shipped in
+Build 860 — earlier builds had the path stubbed out and the watch held
+the driver role until manual user action. Update this footer when
+verified on real devices._
