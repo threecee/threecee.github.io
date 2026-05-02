@@ -27,9 +27,49 @@ The two states:
   has taken over. Watch runs Loop every five minutes. Watch alerts fire
   on your wrist.
 
-The "who's driving" indicator on the iPhone main screen and on the watch
-face complication tells you which device is currently driving. Look for
-a small icon or label change when handoff happens.
+### How to tell which device is driving
+
+Look at the loop status ring on either device:
+
+- **A small white dot in the center of the ring** = "this device is
+  currently driving."
+- **No dot in the center** = "the other device is driving" (this device
+  is the passenger).
+
+The dot **pulses gently** for the brief sub-second window during which
+ownership is being handed off between phone and watch.
+
+Same convention on both devices, so you always read the indicator
+locally: "is my phone driving?" check the iPhone's loop ring; "is my
+watch driving?" check the Apple Watch's loop ring. If both rings show a
+dot at the same time during normal operation, that's a split-brain
+condition the system detects and resolves automatically (phone wins).
+
+<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; max-width: 600px; margin: 1.5rem 0;">
+
+<figure style="margin: 0; text-align: center;">
+<img src="images/driver-iphone-phone-driving.png" alt="iPhone with phone driving — dot visible" style="width: 100%;">
+<figcaption><strong>iPhone</strong> — phone driving (dot)</figcaption>
+</figure>
+
+<figure style="margin: 0; text-align: center;">
+<img src="images/driver-iphone-watch-driving.png" alt="iPhone with watch driving — no dot" style="width: 100%;">
+<figcaption><strong>iPhone</strong> — watch driving (no dot)</figcaption>
+</figure>
+
+<figure style="margin: 0; text-align: center;">
+<img src="images/driver-watch-watch-driving.png" alt="Apple Watch with watch driving — dot visible" style="width: 100%;">
+<figcaption><strong>Apple Watch</strong> — watch driving (dot)</figcaption>
+</figure>
+
+<figure style="margin: 0; text-align: center;">
+<img src="images/driver-watch-phone-driving.png" alt="Apple Watch with phone driving — no dot" style="width: 100%;">
+<figcaption><strong>Apple Watch</strong> — phone driving (no dot)</figcaption>
+</figure>
+
+</div>
+
+_Mockups above show only the ring and indicator; the live HUD includes glucose, IOB, and other status around it. Real on-device screenshots will replace these after hardware verification._
 
 ## Handoff: how the watch takes over
 
