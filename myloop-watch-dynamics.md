@@ -214,6 +214,59 @@ The auto-revert behavior is governed by the handoff mode setting
 keeps the driver role until you initiate a handoff back to the phone
 explicitly via the watch's settings.
 
+## Remote care: how a caretaker can monitor and act
+
+If you're a parent (or partner, or school nurse) and the Looper is
+across the house — or across town — there are several ways to stay in
+the loop. They all run on top of Loop's normal Nightscout upload
+pipeline, which is unchanged by the watch-driving feature. **The phone
+uploads to Nightscout no matter who is driving.** The watch never
+talks to Nightscout directly; it sends pump events and algorithm
+results back to the phone via WCSession, and the phone forwards them
+upstream as soon as it has Wi-Fi or cellular.
+
+The practical consequence: **being far from the pod doesn't break
+remote care, but the phone losing network does.** A phone sitting on
+the kitchen counter while the kid + watch + pod are upstairs is fine —
+uploads keep flowing. A phone with no Wi-Fi and no cellular is
+invisible to caretakers, even though Loop is still running locally on
+the watch.
+
+The pathways most relevant to MyLoop families:
+
+- **Nightscout** (the substrate). Loop uploads BG, IOB, COB, basal,
+  pump status, and loop-cycle telemetry whenever the phone is online.
+  Loop 3 buffers up to 7 days locally and back-fills when connectivity
+  returns. From Nightscout's Care Portal a caretaker can issue
+  **remote overrides, remote carbs, and remote boluses** (the latter
+  two require a one-time-password shared with the Looper's phone).
+  Loop receives those commands via APNs and executes them on the next
+  cycle. See [LoopDocs: Remote
+  Commands](https://loopkit.github.io/loopdocs/nightscout/remote-commands/).
+- **Loop Caregiver** ([LoopKit/LoopCaregiver](https://github.com/LoopKit/LoopCaregiver)).
+  Official iOS companion. QR-code setup from the Looper's phone packages
+  Nightscout URL, API secret, and OTP seed in one step. Presents a
+  Loop-like UI with the same remote commands as the Care Portal but
+  with biometric auth and automatic OTP handling. This is the
+  recommended caretaker app for parents.
+- **LoopFollow** ([loopandlearn/LoopFollow](https://github.com/loopandlearn/LoopFollow)).
+  Community follower with rich alerts (missed BG, low/high, IOB, not-looping,
+  SAGE/CAGE, battery), a Contacts-based watch complication, and — since
+  v4.0 (October 2025) — direct APNs delivery of remote commands from the
+  caretaker's phone to the Looper's phone, bypassing Nightscout for the
+  command path. Display still goes through Nightscout.
+- **Nightguard / NightWatch** (standalone Apple Watch). [nightscout/nightguard](https://github.com/nightscout/nightguard)
+  reads Nightscout directly on a cellular Apple Watch — useful for the
+  caretaker who wants their own wrist-glance regardless of where the
+  Looper's phone is. Display-only; no commands.
+
+None of these care pathways are sensitive to which device is currently
+the BLE driver. From the caretaker's point of view, watch-driving is
+invisible — they see continuous data and continuous loop-cycle status
+the same way they would on a vanilla Loop install. The only failure
+mode is "the Looper's phone has no network," and that's a vanilla Loop
+limitation, not a watch-driving one.
+
 ## What to do if handoff doesn't happen
 
 If you check the watch and the badge says it's still in passenger
@@ -236,6 +289,9 @@ mode after the phone has clearly gone out of range:
 - Critical Alerts on the watch when in Focus modes — this entitlement
   is pending Apple approval; for now use Focus exemptions or rely on
   the watch's haptic alerts.
+- Direct upload from the watch to Nightscout. The watch always relays
+  through the phone, so a fully-offline phone disconnects caretakers
+  from live data even when the watch is driving locally.
 
 _Last updated: 2026-05-04 — Build 883 (covers B.8.1 through B.10)._
 
