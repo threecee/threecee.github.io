@@ -31,8 +31,8 @@ The two states:
 
 Look at the loop status ring on either device:
 
-- **A small white dot in the center of the ring** = "this device is
-  currently driving."
+- **A filled dot in the center of the ring** (same color as the ring
+  itself) = "this device is currently driving."
 - **No dot in the center** = "the other device is driving" (this device
   is the passenger).
 
@@ -89,23 +89,84 @@ to the watch. The bonding-handoff orchestrator in MyLoop ensures only
 one device owns the bond at a time, so the pod never sees conflicting
 commands.
 
+### Lifecycle overview
+
+This is the state machine each device runs. Both phone and watch run
+the same code (the handoff stack is consolidated in a shared module
+parameterized by role); the diagram applies to either.
+
+```mermaid
+stateDiagram-v2
+    direction LR
+    [*] --> PhoneDriver: app launch (default role)
+    PhoneDriver --> HandoffPending: phone offline ≥ 60s\nor user-initiated
+    HandoffPending --> WatchDriver: counterpart confirms\n(< 30s window)
+    HandoffPending --> Recovering: timeout / rejection
+    WatchDriver --> HandoffPending: phone reachable ≥ 60s\n(reverse handoff)
+    Recovering --> PhoneDriver: user dismisses banner\n(if last owner = phone)
+    Recovering --> WatchDriver: user dismisses banner\n(if last owner = watch)
+
+    note right of HandoffPending
+        Both sides suppress
+        pod commands during
+        the transition window
+    end note
+
+    note left of Recovering
+        After app restart, any
+        previously-pending handoff
+        is treated as expired —
+        recovery banner shown
+    end note
+```
+
+Three safety properties baked into the lifecycle:
+
+- **Pod commands are suppressed during the transition window.** Bolus,
+  cancel-bolus, suspend, and resume all return a "try again" error if
+  invoked while a handoff is pending. The previously-driving device
+  resumes normal command authority after the transition completes or
+  recovers.
+- **Crashes mid-handoff always recover safely.** If the app restarts
+  during the sub-second transition window, the persisted state is
+  treated as expired and the user sees a recovery banner instead of an
+  ambiguous mid-flight handoff. Worst case is "user dismisses banner";
+  the system never resumes a half-finished transition.
+- **Settings stay fresh on the watch.** Edits you make on the iPhone
+  (target range, ISF, max bolus, etc.) propagate to the watch within
+  one Loop iteration — about 30 seconds — without forcing a handoff.
+
 ## Warming up: the first few iterations after handoff
 
-When the watch becomes the driver, its Loop history is colder than the
-phone's was. The watch backfills recent glucose from the CGM and recent
-dose events from the pod, but for the first **~30 minutes (about 5
-algorithm iterations)** it operates with a smaller history window.
+When the watch becomes the driver, it needs recent glucose, dose, and
+carb history to compute a Loop iteration. Two paths:
 
-During this window, the watch displays a small **"Loop warming up"**
-badge. While the badge is showing:
+- **Skip-warmup (the fast path).** If the watch has a fresh
+  algorithm-state snapshot from the phone (one is pushed at the end of
+  every phone iteration, ≤ 7 minutes old), the watch hydrates its
+  stores from the snapshot and runs a full Loop iteration immediately.
+  No warmup badge appears.
+- **Full warmup (the safe fallback).** If no fresh snapshot is
+  available — for example, the watch app cold-launched while the
+  phone is offline — the watch displays a **"Loop warming up"** badge
+  for the first few iterations (about 30 minutes) while it backfills
+  recent glucose from the CGM and recent dose events from the pod.
+
+While the warmup badge is showing:
 
 - The algorithm is running, but on conservative defaults.
 - Closed-loop dosing decisions are smaller / more cautious than they
   would be with full history.
 - Glucose alerts fire normally.
 
-After the warm-up window completes, the badge clears and the watch
-operates with a full algorithm context.
+After the warm-up window completes (or the snapshot fast-path succeeds),
+the badge clears and the watch operates with full algorithm context.
+
+A **runtime equivalence test** (`LoopAlgorithmReconciliationTests`)
+verifies that the watch's Loop computation produces byte-identical
+output to the iPhone's for the same input — across steady-state,
+post-meal-carb, and predicted-hypo scenarios. This catches any future
+drift between the two consumers of the shared algorithm code.
 
 ## What happens when phone + watch are separated
 
@@ -120,6 +181,21 @@ While you're separated:
 - Dosing decisions continue, computed on the watch.
 - Alerts fire on your wrist.
 - The phone may show "watch is currently driving" if you check it.
+
+### Cold-launch while phone is offline
+
+If you reboot or relaunch the watch app while your phone is unreachable,
+the watch can still bootstrap the Loop driver. The most recent settings
+sync from the phone is persisted to a shared App Group container on the
+watch, so the watch reconstructs its therapy parameters (ISF, CR,
+target range, max basal/bolus, suspend threshold) from disk without
+needing a fresh handshake. If you've been using the system for a while
+and the watch has ever been synced, this works even when the phone is
+across the house, dead, or in the next room.
+
+The only case where bootstrap fails is "the watch has never received a
+single settings sync" — e.g., a fresh install with the phone offline.
+In that case the watch waits with the warmup badge until a sync arrives.
 
 ## Reverting to phone-driving
 
@@ -161,10 +237,20 @@ mode after the phone has clearly gone out of range:
   is pending Apple approval; for now use Focus exemptions or rely on
   the watch's haptic alerts.
 
-_Last updated: 2026-05-02_
+_Last updated: 2026-05-04 — Build 883 (covers B.8.1 through B.10)._
 
-_Watch behavior verified on hardware: pending. Auto-revert from watch
-back to phone (Reverting to phone-driving section above) shipped in
-Build 860 — earlier builds had the path stubbed out and the watch held
-the driver role until manual user action. Update this footer when
-verified on real devices._
+_Watch behavior verified on hardware: pending consolidated HV-1
+session. The handoff lifecycle described above applies to Build 883
+(uploaded 2026-05-04). Build 883 includes: live `LoopSettings` observer
++ dedup; persisted last-good settings; snapshot-driven skip-warmup
+(real algorithm-state hydration via per-iteration buffers);
+file-pointer fallback for oversized snapshot payloads;
+`commandsAllowedCheck` gate on resume/suspend/cancel-bolus during
+handoff transitions; M3 always-recover after restart; iOS↔watch
+algorithm reconciliation test (3 fixtures, byte-identical assertion);
+consolidated handoff stack (single shared module, both phone and watch
+run the same code parameterized by role)._
+
+_Earlier shipped behavior: B.7 driver indicator (Build 872), B.8 watch
+warmup elimination via algorithm-state snapshots (Build 872). Auto-revert
+from watch back to phone shipped in Build 860._

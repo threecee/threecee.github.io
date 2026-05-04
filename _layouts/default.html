@@ -52,5 +52,20 @@
     </p>
     <p>Source: <a href="https://github.com/threecee/threecee.github.io">github.com/threecee/threecee.github.io</a></p>
   </footer>
+
+  <!-- Mermaid: client-side render of ```mermaid code blocks. Auto-detects color scheme. -->
+  <script type="module">
+    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+    const dark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    mermaid.initialize({ startOnLoad: false, theme: dark ? 'dark' : 'default' });
+    document.querySelectorAll('pre > code.language-mermaid').forEach((el, i) => {
+      const wrap = document.createElement('div');
+      wrap.className = 'mermaid';
+      wrap.id = `m${i}`;
+      wrap.textContent = el.textContent;
+      el.parentElement.replaceWith(wrap);
+    });
+    mermaid.run();
+  </script>
 </body>
 </html>
