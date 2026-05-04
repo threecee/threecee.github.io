@@ -181,6 +181,10 @@ While you're separated:
 - Dosing decisions continue, computed on the watch.
 - Alerts fire on your wrist.
 - The phone may show "watch is currently driving" if you check it.
+- If the watch has LTE or Wi-Fi, uploads to Nightscout continue
+  directly from the watch. Caretakers see live data even with the
+  phone fully offline. (Wi-Fi-only watches lose this until the phone
+  reconnects.)
 
 ### Cold-launch while phone is offline
 
@@ -214,58 +218,88 @@ The auto-revert behavior is governed by the handoff mode setting
 keeps the driver role until you initiate a handoff back to the phone
 explicitly via the watch's settings.
 
-## Remote care: how a caretaker can monitor and act
+## Remote care: driver owns the network
 
 If you're a parent (or partner, or school nurse) and the Looper is
-across the house — or across town — there are several ways to stay in
-the loop. They all run on top of Loop's normal Nightscout upload
-pipeline, which is unchanged by the watch-driving feature. **The phone
-uploads to Nightscout no matter who is driving.** The watch never
-talks to Nightscout directly; it sends pump events and algorithm
-results back to the phone via WCSession, and the phone forwards them
-upstream as soon as it has Wi-Fi or cellular.
+across the house — or across town — caretaker visibility and remote
+commands work the same way regardless of whether the iPhone or the
+Apple Watch is the BLE driver. **Whichever device is driving is also
+the one that uploads to Nightscout and processes remote commands.**
+The other device stays silent on the network the same way it stays
+silent on Bluetooth.
 
-The practical consequence: **being far from the pod doesn't break
-remote care, but the phone losing network does.** A phone sitting on
-the kitchen counter while the kid + watch + pod are upstairs is fine —
-uploads keep flowing. A phone with no Wi-Fi and no cellular is
-invisible to caretakers, even though Loop is still running locally on
-the watch.
+In plain terms: a phone sitting at home with no signal does not cut
+caretakers off, as long as the watch is the driver and the watch has
+LTE or Wi-Fi. The watch uploads directly. Caretakers see continuous
+status; remote-bolus / remote-carb / remote-override commands land at
+the watch and are executed on the next loop cycle.
 
-The pathways most relevant to MyLoop families:
+### Hardware requirement
 
-- **Nightscout** (the substrate). Loop uploads BG, IOB, COB, basal,
-  pump status, and loop-cycle telemetry whenever the phone is online.
-  Loop 3 buffers up to 7 days locally and back-fills when connectivity
-  returns. From Nightscout's Care Portal a caretaker can issue
-  **remote overrides, remote carbs, and remote boluses** (the latter
-  two require a one-time-password shared with the Looper's phone).
-  Loop receives those commands via APNs and executes them on the next
-  cycle. See [LoopDocs: Remote
-  Commands](https://loopkit.github.io/loopdocs/nightscout/remote-commands/).
-- **Loop Caregiver** ([LoopKit/LoopCaregiver](https://github.com/LoopKit/LoopCaregiver)).
-  Official iOS companion. QR-code setup from the Looper's phone packages
-  Nightscout URL, API secret, and OTP seed in one step. Presents a
-  Loop-like UI with the same remote commands as the Care Portal but
-  with biometric auth and automatic OTP handling. This is the
-  recommended caretaker app for parents.
-- **LoopFollow** ([loopandlearn/LoopFollow](https://github.com/loopandlearn/LoopFollow)).
-  Community follower with rich alerts (missed BG, low/high, IOB, not-looping,
-  SAGE/CAGE, battery), a Contacts-based watch complication, and — since
-  v4.0 (October 2025) — direct APNs delivery of remote commands from the
-  caretaker's phone to the Looper's phone, bypassing Nightscout for the
-  command path. Display still goes through Nightscout.
-- **Nightguard / NightWatch** (standalone Apple Watch). [nightscout/nightguard](https://github.com/nightscout/nightguard)
-  reads Nightscout directly on a cellular Apple Watch — useful for the
-  caretaker who wants their own wrist-glance regardless of where the
-  Looper's phone is. Display-only; no commands.
+This symmetry depends on the watch having its own internet path —
+**an LTE Apple Watch (cellular plan) is required** for full
+remote-care during watch-driving. A Wi-Fi-only Apple Watch that loses
+its phone tether continues to drive the pod locally, but caretakers
+will not see uploads or be able to send commands until the phone
+reconnects. The dynamics page tells you which device is driving; if
+you have a Wi-Fi-only watch, treat watch-driving + phone-offline as a
+"caretaker-blind" condition.
 
-None of these care pathways are sensitive to which device is currently
-the BLE driver. From the caretaker's point of view, watch-driving is
-invisible — they see continuous data and continuous loop-cycle status
-the same way they would on a vanilla Loop install. The only failure
-mode is "the Looper's phone has no network," and that's a vanilla Loop
-limitation, not a watch-driving one.
+### How driver-routing works under the hood
+
+Each device publishes its APNs push token. Every Loop iteration, the
+**driver** writes a small object to Nightscout's `devicestatus`
+recording both tokens, who is currently driving, and an HMAC
+signature against your Nightscout API secret:
+
+```
+loop.testingDetails.driverToken = {
+  phone:  { token, expiresAt, lastSeen }
+  watch:  { token, expiresAt, lastSeen }
+  currentDriver: "phone" | "watch"
+  signature: <HMAC-SHA256>
+}
+```
+
+Caretaker apps and Nightscout's `loop` plugin read this field, verify
+the signature, and target the *current driver's* token when sending
+remote commands. During a handoff, the outgoing driver writes the
+new `currentDriver` value to Nightscout *before* the BLE bond moves,
+so caretaker polls always learn the new driver before they need to
+send anything to it.
+
+If the pre-handoff publication fails (transient network), the role
+still flips and the new driver re-stamps `currentDriver` on its first
+upload — caretaker visibility self-corrects within ~5 minutes. Pump
+commands stay short-circuited during the transition window so nothing
+double-executes.
+
+### Caretaker app status
+
+The driver-token field is brand-new (Build 888, 2026-05-04). For the
+upstream caretaker apps to actually *use* the field, they need a small
+upgrade. Status as of Build 888:
+
+| Pathway | Today's behavior | After upstream PR lands |
+|---|---|---|
+| **Nightscout Care Portal** ([LoopDocs](https://loopkit.github.io/loopdocs/nightscout/remote-commands/)) | Targets the QR-captured phone token. Phone-driving works; watch-driving is invisible. | Server-side change to Nightscout's `loop` plugin to read `driverToken` and target `currentDriver`. **One PR; benefits all Care Portal users + Loop Caregiver indirectly.** Open as backlog item F.1a. |
+| **Loop Caregiver** ([LoopKit/LoopCaregiver](https://github.com/LoopKit/LoopCaregiver)) | Routes commands via Nightscout, so it inherits whatever Nightscout's `loop` plugin does. | Automatically benefits from F.1a — no app-side change needed. |
+| **LoopFollow** ([loopandlearn/LoopFollow](https://github.com/loopandlearn/LoopFollow)) v4.0+ | Direct-APNs path bypasses Nightscout; targets the QR-captured phone token. | Independent app-side PR (F.2) teaching the direct-APNs path to read `driverToken` and target `currentDriver`. |
+| **Nightguard / NightWatch** ([nightscout/nightguard](https://github.com/nightscout/nightguard)) | Display-only on a cellular Apple Watch. No commands. | Unchanged — display-only follower, no driver-routing concern. |
+
+Until F.1a and F.2 land upstream, MyLoop on Build 888 ships the
+**publishing** half of symmetric remote care: caretakers can *see*
+which device is driving, watch-driving uploads now reach Nightscout
+directly, and the handoff handshake correctly stamps `currentDriver`
+in the right order. The **command-routing** half waits on the
+upstream caretaker-app PRs.
+
+### Backward compatibility
+
+Caretaker apps that don't know about `driverToken` continue to use
+the QR-captured phone token. This means **phone-driving caretaker
+integration is unchanged from Build 883** — no regression. Only
+watch-driving + remote commands needs the upstream PRs.
 
 ## What to do if handoff doesn't happen
 
@@ -289,20 +323,38 @@ mode after the phone has clearly gone out of range:
 - Critical Alerts on the watch when in Focus modes — this entitlement
   is pending Apple approval; for now use Focus exemptions or rely on
   the watch's haptic alerts.
-- Direct upload from the watch to Nightscout. The watch always relays
-  through the phone, so a fully-offline phone disconnects caretakers
-  from live data even when the watch is driving locally.
+- Watch-driving caretaker remote commands targeting the watch's APNs
+  token. The publication side ships in Build 888 (`driverToken` field
+  in Nightscout `devicestatus`), but the upstream caretaker apps
+  (Nightscout `loop` plugin, LoopFollow direct-APNs) need PRs to read
+  the field. Until those land, watch-driving + remote commands works
+  only if the phone has network and can forward APNs to the watch via
+  WCSession.
+- Wi-Fi-only Apple Watch direct-uploads when the phone is unreachable.
+  An LTE Apple Watch is required for the watch to upload to Nightscout
+  while the phone is offline.
 
-_Last updated: 2026-05-04 — Build 883 (covers B.8.1 through B.10)._
+_Last updated: 2026-05-04 — Build 888 (covers B.8.1 through B.11)._
 
 _Watch behavior verified on hardware: pending consolidated HV-1
-session. The handoff lifecycle described above applies to Build 883
-(uploaded 2026-05-04). Build 883 includes: live `LoopSettings` observer
+session. The handoff lifecycle described above applies to Build 888
+(uploaded 2026-05-04). Build 888 adds the **B.11 symmetric remote
+care** umbrella on top of Build 883: watch APNs entitlements + token
+publication (B.11.0); role-parameterized `RemoteCareUploader` with
+driver-only-writes invariant (B.11.1); HMAC-signed `driverToken`
+rendezvous in Nightscout `devicestatus` with token rotation
+propagation (B.11.2 + B.11.2.1); pending-driver handshake that
+publishes `currentDriver: <incoming>` before the BLE bond moves so
+caretaker polls always see the new driver before sending commands
+(B.11.3, fire-and-forget with idempotency-on-first-iteration safety
+net)._
+
+_Build 883 baseline (carried forward): live `LoopSettings` observer
 + dedup; persisted last-good settings; snapshot-driven skip-warmup
 (real algorithm-state hydration via per-iteration buffers);
 file-pointer fallback for oversized snapshot payloads;
 `commandsAllowedCheck` gate on resume/suspend/cancel-bolus during
-handoff transitions; M3 always-recover after restart; iOS↔watch
+handoff transitions; always-recover after restart; iOS↔watch
 algorithm reconciliation test (3 fixtures, byte-identical assertion);
 consolidated handoff stack (single shared module, both phone and watch
 run the same code parameterized by role)._
@@ -310,3 +362,7 @@ run the same code parameterized by role)._
 _Earlier shipped behavior: B.7 driver indicator (Build 872), B.8 watch
 warmup elimination via algorithm-state snapshots (Build 872). Auto-revert
 from watch back to phone shipped in Build 860._
+
+_Pending upstream caretaker-app work: F.1a (Nightscout `loop` plugin
+PR — server-side `driverToken` routing, benefits Loop Caregiver
+indirectly) and F.2 (LoopFollow direct-APNs PR — independent of F.1a)._
